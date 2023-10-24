@@ -790,7 +790,7 @@ function pongo_down {
     PROJECT_NAME=${PROJECT_NAME_PREFIX}${PROJECT_ID}
     SERVICE_NETWORK_NAME=${SERVICE_NETWORK_PREFIX}${PROJECT_ID}
     compose down --remove-orphans
-  done < <(docker network ls --filter name=kong-pongo)
+  done < <(docker network ls --filter 'name='$SERVICE_NETWORK_PREFIX --format '{{.Name}}')
 
   PROJECT_ID=$p_id
   PROJECT_NAME=$p_name
