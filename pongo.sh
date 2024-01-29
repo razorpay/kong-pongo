@@ -139,6 +139,23 @@ function globals {
     export SQUID_IMAGE=sameersbn/squid:$SQUID
   fi
 
+  # proxy config, ensure it's set in all lower-case
+  # shellcheck disable=SC2153
+  if [[ -z $http_proxy ]] && [[ -n $HTTP_PROXY ]]; then
+    export http_proxy=$HTTP_PROXY
+  fi
+  # shellcheck disable=SC2153
+  if [[ -z $https_proxy ]] && [[ -n $HTTPS_PROXY ]]; then
+    export https_proxy=$HTTPS_PROXY
+  fi
+  # shellcheck disable=SC2153
+  if [[ -z $ftp_proxy ]] && [[ -n $FTP_PROXY ]]; then
+    export ftp_proxy=$FTP_PROXY
+  fi
+  # shellcheck disable=SC2153
+  if [[ -z $no_proxy ]] && [[ -n $NO_PROXY ]]; then
+    export no_proxy=$NO_PROXY
+  fi
 
   # Commandline related variables
   unset ACTION
@@ -710,10 +727,10 @@ function build_image {
   $WINPTY_PREFIX docker build \
     -f "$DOCKER_FILE" \
     --build-arg PONGO_VERSION="$PONGO_VERSION" \
-    --build-arg http_proxy \
-    --build-arg https_proxy \
-    --build-arg ftp_proxy \
-    --build-arg no_proxy \
+    --build-arg http_proxy="$http_proxy" \
+    --build-arg https_proxy="$https_proxy" \
+    --build-arg ftp_proxy="$ftp_proxy" \
+    --build-arg no_proxy="$no_proxy" \
     --build-arg KONG_BASE="$KONG_IMAGE" \
     --build-arg KONG_DEV_FILES="./kong-versions/$VERSION/kong" \
     --tag "$KONG_TEST_IMAGE" \
@@ -1136,6 +1153,10 @@ function main {
       -e KONG_LICENSE_DATA \
       -e KONG_TEST_DONT_CLEAN \
       -e KONG_TEST_PLUGIN_PATH \
+      -e http_proxy \
+      -e https_proxy \
+      -e no_proxy \
+      -e ftp_proxy \
       -e PONGO_CLIENT_VERSION="$PONGO_VERSION" \
       kong \
       "$WINDOWS_SLASH/bin/bash" "-c" "apt-get install -y nettle-dev; bin/busted --helper=$WINDOWS_SLASH/pongo/busted_helper.lua ${busted_params[*]} ${busted_files[*]} ${coverage_report}"
@@ -1198,6 +1219,10 @@ function main {
     compose run --rm --use-aliases \
       -e KONG_LICENSE_DATA \
       -e PONGO_CLIENT_VERSION="$PONGO_VERSION" \
+      -e http_proxy \
+      -e https_proxy \
+      -e no_proxy \
+      -e ftp_proxy \
       -e KONG_LOG_LEVEL \
       -e KONG_ANONYMOUS_REPORTS \
       -e SUPPRESS_KONG_VERSION="$suppress_kong_version" \
@@ -1251,6 +1276,10 @@ function main {
       --workdir="$WINDOWS_SLASH/kong-plugin" \
       -e KONG_LICENSE_DATA \
       -e PONGO_CLIENT_VERSION="$PONGO_VERSION" \
+      -e http_proxy \
+      -e https_proxy \
+      -e no_proxy \
+      -e ftp_proxy \
       -e KONG_LOG_LEVEL \
       -e KONG_ANONYMOUS_REPORTS \
       -e KONG_PG_DATABASE="kong_tests" \
