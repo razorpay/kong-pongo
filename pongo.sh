@@ -1188,7 +1188,6 @@ function main {
       -e KONG_LICENSE_DATA \
       -e KONG_TEST_DONT_CLEAN \
       -e KONG_TEST_FIPS \
-      -e KONG_TEST_LICENSE_PATH \
       -e KONG_TEST_PLUGIN_PATH \
       -e http_proxy \
       -e https_proxy \
