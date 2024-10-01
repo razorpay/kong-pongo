@@ -43,7 +43,7 @@ services:
       - pongo-test-network
 
   postgres:
-    image: ${POSTGRES_IMAGE:-postgres:9.5}
+    image: ${POSTGRES_IMAGE:-postgres:13}
     environment:
       POSTGRES_USER: kong
       POSTGRES_DB: kong_tests
