@@ -115,11 +115,11 @@ function globals {
   # KONG_EE_PRIVATE_TAG_POSTFIX="-ubuntu"
 
   # regular Kong CE images repo (tag is build as $PREFIX$VERSION$POSTFIX)
-  KONG_OSS_TAG_PREFIX="kong:"
+  KONG_OSS_TAG_PREFIX="c.rzp.io/razorpay-external/kong:"
   KONG_OSS_TAG_POSTFIX="-ubuntu"
 
   # unoffical Kong CE images repo, the fallback
-  KONG_OSS_UNOFFICIAL_TAG_PREFIX="kong/kong:"
+  KONG_OSS_UNOFFICIAL_TAG_PREFIX="kong:"
   KONG_OSS_UNOFFICIAL_TAG_POSTFIX="-ubuntu"
 
   # development EE images repo, these are public, no credentials needed
