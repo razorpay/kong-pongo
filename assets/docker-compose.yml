@@ -1,5 +1,3 @@
-version: '3.5'
-
 networks:
   pongo-test-network:
     name: ${SERVICE_NETWORK_NAME}
@@ -45,7 +43,7 @@ services:
       - pongo-test-network
 
   postgres:
-    image: ${POSTGRES_IMAGE:-postgres:9.5}
+    image: ${POSTGRES_IMAGE:-postgres:13}
     environment:
       POSTGRES_USER: kong
       POSTGRES_DB: kong_tests
@@ -157,6 +155,17 @@ services:
       - PONGO_COMMAND=${ACTION}
       - PONGO_NETWORK=${SERVICE_NETWORK_NAME}
       - PONGO_ID=${PROJECT_ID}
+    healthcheck:
+      interval: 5s
+      retries: 10
+      test:
+      - CMD
+      - kong
+      - health
+      - --prefix=/kong-plugin/servroot/
+      timeout: 10s
+    extra_hosts:
+    - "host.docker.internal:host-gateway"
     networks:
       pongo-test-network:
         aliases:

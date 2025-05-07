@@ -4,7 +4,7 @@
 
 function globals {
   # Project related global variables
-  PONGO_VERSION=2.7.0
+  PONGO_VERSION=2.14.0
 
   local script_path
   # explicitly resolve the link because realpath doesn't do it on Windows
@@ -25,7 +25,8 @@ function globals {
 
   DOCKER_FILE=${PONGO_DOCKER_FILE:-$LOCAL_PATH/assets/Dockerfile}
   DOCKER_COMPOSE_FILES="-f ${LOCAL_PATH}/assets/docker-compose.yml"
-  IMAGE_BASE_NAME=kong-pongo-test
+  IMAGE_BASE_PREFIX="kong-pongo-"
+  IMAGE_BASE_NAME=$IMAGE_BASE_PREFIX$PONGO_VERSION
 
   # the path where the plugin source is located, as seen from Pongo (this script)
   KONG_TEST_PLUGIN_PATH=$(realpath .)
@@ -73,19 +74,29 @@ function globals {
   SERVICE_NETWORK_PREFIX="pongo-"
   SERVICE_NETWORK_NAME=kong-pongo
 
-  KONG_LICENSE_URL="https://download.konghq.com/internal/kong-gateway/license.json"
-
   unset WINDOWS_SLASH
   unset WINPTY_PREFIX
-  local platform
-  platform=$(uname -s)
-  if [ "${platform:0:5}" == "MINGW" ]; then
-    # Windows requires an extra / in docker command so //bin/bash
+  unset PONGO_PLATFORM
+  if [ "$(uname -s)" == "Darwin" ]; then
+    # all Apple platforms
+    export PONGO_PLATFORM="APPLE"
+  elif uname -s | grep -q "MINGW"; then
+    # Git Bash for Windows
+    # Msys (not supported!)
+    export PONGO_PLATFORM="WINDOWS"
+    # Windows/MinGW requires an extra / in docker command so //bin/bash
     # https://www.reddit.com/r/docker/comments/734arg/cant_figure_out_how_to_bash_into_docker_container/
     WINDOWS_SLASH="/"
-    # for terminal output we passthrough winpty
-    WINPTY_PREFIX=winpty
-  fi;
+    if winpty --help > /dev/null; then
+      # for terminal output we passthrough winpty
+      WINPTY_PREFIX="winpty"
+    fi
+  elif grep -q WSL < /proc/version; then
+    # WSL and WSL2
+    export PONGO_PLATFORM="WINDOWS"
+  else
+    export PONGO_PLATFORM="LINUX"
+  fi
 
   # when running CI do we have the required secrets available? (used for EE only)
   # secrets are unavailable for PR's from outside the organization (untrusted)
@@ -98,25 +109,36 @@ function globals {
   KONG_EE_TAG_PREFIX="kong/kong-gateway:"
   KONG_EE_TAG_POSTFIX="-ubuntu"
 
-  # all Kong Enterprise images repo (tag is build as $PREFIX$VERSION$POSTFIX).
-  KONG_EE_PRIVATE_TAG_PREFIX="kong/kong-gateway-private:"
-  KONG_EE_PRIVATE_TAG_POSTFIX="-ubuntu"
+  # # all Kong Enterprise images repo (tag is build as $PREFIX$VERSION$POSTFIX).
+  # # these are private, credentials are needed
+  # KONG_EE_PRIVATE_TAG_PREFIX="kong/kong-gateway-private:"
+  # KONG_EE_PRIVATE_TAG_POSTFIX="-ubuntu"
 
   # regular Kong CE images repo (tag is build as $PREFIX$VERSION$POSTFIX)
-  KONG_OSS_TAG_PREFIX="kong:"
+  KONG_OSS_TAG_PREFIX="c.rzp.io/razorpay-external/kong:"
   KONG_OSS_TAG_POSTFIX="-ubuntu"
 
   # unoffical Kong CE images repo, the fallback
-  KONG_OSS_UNOFFICIAL_TAG_PREFIX="kong/kong:"
+  KONG_OSS_UNOFFICIAL_TAG_PREFIX="kong:"
   KONG_OSS_UNOFFICIAL_TAG_POSTFIX="-ubuntu"
 
-  # development EE images repo, these require to additionally set the credentials
-  # in $DOCKER_USERNAME and $DOCKER_PASSWORD
-  DEVELOPMENT_EE_TAG="kong/kong-gateway-internal:master-ubuntu"
+  # development EE images repo, these are public, no credentials needed
+  DEVELOPMENT_EE_TAG="kong/kong-gateway-dev:master-ubuntu"
 
   # development CE images, these are public, no credentials needed
   DEVELOPMENT_CE_TAG="kong/kong:master-ubuntu"
 
+
+  # dependency health checks
+  if [[ -z $HEALTH_TIMEOUT ]]; then
+    export HEALTH_TIMEOUT=60
+  fi
+  if [[ $HEALTH_TIMEOUT -lt 0 ]]; then
+    export HEALTH_TIMEOUT=0
+  fi
+  if [[ $HEALTH_TIMEOUT -eq 0 ]]; then
+    export SERVICE_DISABLE_HEALTHCHECK=true
+  fi
 
   # Dependency image defaults
   if [[ -z $POSTGRES_IMAGE ]] && [[ -n $POSTGRES ]]; then
@@ -139,6 +161,23 @@ function globals {
     export SQUID_IMAGE=sameersbn/squid:$SQUID
   fi
 
+  # proxy config, ensure it's set in all lower-case
+  # shellcheck disable=SC2153
+  if [[ -z $http_proxy ]] && [[ -n $HTTP_PROXY ]]; then
+    export http_proxy=$HTTP_PROXY
+  fi
+  # shellcheck disable=SC2153
+  if [[ -z $https_proxy ]] && [[ -n $HTTPS_PROXY ]]; then
+    export https_proxy=$HTTPS_PROXY
+  fi
+  # shellcheck disable=SC2153
+  if [[ -z $ftp_proxy ]] && [[ -n $FTP_PROXY ]]; then
+    export ftp_proxy=$FTP_PROXY
+  fi
+  # shellcheck disable=SC2153
+  if [[ -z $no_proxy ]] && [[ -n $NO_PROXY ]]; then
+    export no_proxy=$NO_PROXY
+  fi
 
   # Commandline related variables
   unset ACTION
@@ -367,6 +406,7 @@ function parse_args {
         --debug)
           # PONGO_DEBUG=true
           set -x
+          export BUILDKIT_PROGRESS=plain
           ;;
         *)
           handle_dep_arg "$pongo_arg" || EXTRA_ARGS+=("$pongo_arg")
@@ -457,16 +497,7 @@ function get_image {
       image=$DEVELOPMENT_EE_TAG
       docker pull "$image"
       if [[ ! $? -eq 0 ]]; then
-        warn "failed to pull the Kong Enterprise development image, retrying with login..."
-        check_secret_availability "$image"
-        docker_login_ee
-        docker pull "$image"
-        if [[ ! $? -eq 0 ]]; then
-          docker logout
-          err "failed to pull: $image"
-        fi
-        msg "pull with login succeeded"
-        docker logout
+        err "failed to pull: $image"
       fi
     fi
 
@@ -482,32 +513,18 @@ function get_image {
     if [[ ! $? -eq 0 ]]; then
       docker pull "$image"
       if [[ ! $? -eq 0 ]]; then
-        warn "failed to pull image $image."
-
-        if is_enterprise "$KONG_VERSION"; then
-            # failed to pull EE image, so try the fallback to the private repo
-            image=$KONG_EE_PRIVATE_TAG_PREFIX$KONG_VERSION$KONG_EE_PRIVATE_TAG_POSTFIX
-            docker_login_ee
-            docker pull "$image"
-            if [[ ! $? -eq 0 ]]; then
-              docker logout
-              err "failed to pull: $image"
-            fi
-            docker logout
-        else
-          # failed to pull CE image, so try the fallback
-          # NOTE: new releases take a while (days) to become available in the
-          # official docker hub repo. Hence we fall back on the unofficial Kong
-          # repo that is immediately available for each release. This will
-          # prevent any CI from failing in the mean time.
-          msg "failed to pull: $image from the official repo, retrying unofficial..."
-          image=$KONG_OSS_UNOFFICIAL_TAG_PREFIX$KONG_VERSION$KONG_OSS_UNOFFICIAL_TAG_POSTFIX
-          docker pull "$image"
-          if [[ ! $? -eq 0 ]]; then
-            err "failed to pull: $image"
-          fi
-          msg "pulling unofficial image succeeded"
+        # failed to pull CE image, so try the fallback
+        # NOTE: new releases take a while (days) to become available in the
+        # official docker hub repo. Hence we fall back on the unofficial Kong
+        # repo that is immediately available for each release. This will
+        # prevent any CI from failing in the mean time.
+        msg "failed to pull: $image from the official repo, retrying unofficial..."
+        image=$KONG_OSS_UNOFFICIAL_TAG_PREFIX$KONG_VERSION$KONG_OSS_UNOFFICIAL_TAG_POSTFIX
+        docker pull "$image"
+        if [[ ! $? -eq 0 ]]; then
+          err "failed to pull: $image"
         fi
+        msg "pulling unofficial image succeeded"
       fi
     fi
   fi
@@ -516,34 +533,7 @@ function get_image {
 }
 
 
-function get_license {
-  # If $KONG_VERSION is recognized as an Enterprise version and no license data
-  # has been set in $KONG_LICENSE_DATA yet, then it will log into Pulp and
-  # get the required license.
-  # Result: $KONG_LICENSE_DATA will be set if it is needed
-  if is_enterprise "$KONG_VERSION"; then
-    if [[ -z $KONG_LICENSE_DATA ]]; then
-      # Enterprise version, but no license data available, try and get the license data
-      if [[ "$PULP_USERNAME" == "" ]]; then
-        warn "PULP_USERNAME is not set, might not be able to download the license!"
-      fi
-      if [[ "$PULP_PASSWORD" == "" ]]; then
-        warn "PULP_PASSWORD is not set, might not be able to download the license!"
-      fi
-      KONG_LICENSE_DATA=$(curl -s -L -u"$PULP_USERNAME:$PULP_PASSWORD" $KONG_LICENSE_URL)
-      export KONG_LICENSE_DATA
-      if [[ ! $KONG_LICENSE_DATA == *"signature"* || ! $KONG_LICENSE_DATA == *"payload"* ]]; then
-        # the check above is a bit lame, but the best we can do without requiring
-        # yet more additional dependenies like jq or similar.
-        warn "failed to download the Kong Enterprise license file!
-          $KONG_LICENSE_DATA"
-        unset KONG_LICENSE_DATA
-      fi
-    fi
-  fi
-}
-
-
+GET_VERSION_RAN=false
 function get_version {
   # if $KONG_IMAGE is not yet set, it will get the image (see get_image).
   # Then it will read the Kong version from the image (by executing "kong version")
@@ -551,12 +541,17 @@ function get_version {
   # Result: $VERSION will be read from the image, and $KONG_TEST_IMAGE will be set.
   # NOTE1: $KONG_TEST_IMAGE is only a name, the image might not have been created yet
   # NOTE2: if it is a development tag, then $VERSION will be a commit-id
+  local custom_image=false
   if [[ -z $KONG_IMAGE ]]; then
     validate_version "$KONG_VERSION"
     get_image
+  else
+    custom_image=true
+    if [[ "$GET_VERSION_RAN" == "false" ]]; then
+      # display message only once
+      msg "using provided Kong image '$KONG_IMAGE'"
+    fi
   fi
-
-  get_license
 
   if is_commit_based "$KONG_VERSION"; then
     # it's a development; get the commit-id from the image
@@ -568,6 +563,10 @@ function get_version {
     fi
     if [[ "$VERSION" == "" ]]; then
       err "Got an empty commit-id from Kong image: $KONG_IMAGE, label: org.opencontainers.image.revision"
+    fi
+    if [[ "$GET_VERSION_RAN" == "false" ]]; then
+      # display message only once
+      msg "using Kong development/commit based version '$VERSION'"
     fi
 
   else
@@ -587,8 +586,17 @@ function get_version {
     if [[ ! $? -eq 0 ]]; then
       err "failed to read version from Kong image: $KONG_IMAGE"
     fi
+
+    # if a custom_iamge, report the version found
+    if [[ "$custom_image" == "true" ]]; then
+      if [[ "$GET_VERSION_RAN" == "false" ]]; then
+        # display message only once
+        msg "Kong image '$KONG_IMAGE' reported version '$VERSION'"
+      fi
+    fi
   fi
 
+  GET_VERSION_RAN=true
   KONG_TEST_IMAGE=$IMAGE_BASE_NAME:$VERSION
 }
 
@@ -612,41 +620,58 @@ function compose {
 }
 
 
+# checks health status of a container. 2 args:
+# 1. container id (required)
+# 2. container name (optional, defaults to the id)
+# returns 0 (success) if healthy, 1 for all other states; starting, unhealthy, stopping, etc.
 function healthy {
   local iid=$1
   [[ -z $iid ]] && return 1
   local state
-  state=$(docker inspect "$iid")
+  state=$(docker inspect --format='{{.State.Health.Status}}' "$iid")
 
   echo "$state" | grep \"Health\" &> /dev/null
   if [[ ! $? -eq 0 ]]; then
     # no healthcheck defined, assume healthy
     return 0
   fi
-
-  echo "$state" | grep \"healthy\" &> /dev/null
-  return $?
+  return 1
 }
 
 
+# takes a container name and returns its id
 function cid {
   compose ps -q "$1" 2> /dev/null
 }
 
 
+# Waits for a dependency to be healthy. 1 arg:
+# 1. dependency name
+# returns 0 (success) if healthy, throws an error if there was a timeout
 function wait_for_dependency {
   local iid
   local dep="$1"
+
+  if [[ "${SERVICE_DISABLE_HEALTHCHECK}" == "true" ]]; then
+    msg "Health checks disabled, won't wait for '$dep' to be healthy"
+    return 0
+  fi
 
   iid=$(cid "$dep")
 
   if healthy "$iid"; then return; fi
 
-  msg "Waiting for $dep"
+  msg "Waiting for '$dep' to become healthy"
 
   while ! healthy "$iid"; do
     sleep 0.5
+    if healthy "$iid" "$dep"; then
+      return 0
+    fi
+    timeout_count=$((timeout_count-1))
   done
+
+  err "Timeout waiting for '$dep' to become healthy"
 }
 
 
@@ -669,7 +694,7 @@ function ensure_available {
   fi
   if [[ ! $? -eq 0 ]]; then
     msg "auto-starting the test environment, use the 'pongo down' action to stop it"
-    compose_up
+    compose_up || err "failed to start the test environment"
   fi
 
   local dependency
@@ -713,21 +738,14 @@ function build_image {
   fi
 
   msg "starting build of image '$KONG_TEST_IMAGE'"
-  # local progress_type
-  # if [[ "$PONGO_DEBUG" == "true" ]] ; then
-  #   progress_type=plain
-  # else
-  #   progress_type=auto
-  # fi
-  # The following line caused issues on newer Docker releases, so we're disabling it for now
-  # --progress $progress_type \
   $WINPTY_PREFIX docker build \
     -f "$DOCKER_FILE" \
     --build-arg PONGO_VERSION="$PONGO_VERSION" \
-    --build-arg http_proxy \
-    --build-arg https_proxy \
-    --build-arg ftp_proxy \
-    --build-arg no_proxy \
+    --build-arg http_proxy="$http_proxy" \
+    --build-arg https_proxy="$https_proxy" \
+    --build-arg ftp_proxy="$ftp_proxy" \
+    --build-arg no_proxy="$no_proxy" \
+    --build-arg PONGO_INSECURE="$PONGO_INSECURE" \
     --build-arg KONG_BASE="$KONG_IMAGE" \
     --build-arg KONG_DEV_FILES="./kong-versions/$VERSION/kong" \
     --tag "$KONG_TEST_IMAGE" \
@@ -790,7 +808,7 @@ function pongo_down {
     PROJECT_NAME=${PROJECT_NAME_PREFIX}${PROJECT_ID}
     SERVICE_NETWORK_NAME=${SERVICE_NETWORK_PREFIX}${PROJECT_ID}
     compose down --remove-orphans
-  done < <(docker network ls --filter name=kong-pongo)
+  done < <(docker network ls --filter 'name='$SERVICE_NETWORK_PREFIX --format '{{.Name}}')
 
   PROJECT_ID=$p_id
   PROJECT_NAME=$p_name
@@ -801,10 +819,10 @@ function pongo_down {
 function pongo_clean {
   pongo_down --all
 
-  docker images --filter=reference="${IMAGE_BASE_NAME}:*" --format "found: {{.ID}}" | grep found
+  docker images --filter=reference="${IMAGE_BASE_PREFIX}*:*" --format "found: {{.ID}}" | grep found
   if [[ $? -eq 0 ]]; then
     # shellcheck disable=SC2046  # we want the image ids to be word-splitted
-    docker rmi $(docker images --filter=reference="${IMAGE_BASE_NAME}:*" --format "{{.ID}}")
+    docker rmi $(docker images --filter=reference="${IMAGE_BASE_PREFIX}*:*" --format "{{.ID}}")
   fi
 
   docker images --filter=reference="pongo-expose:*" --format "found: {{.ID}}" | grep found
@@ -895,7 +913,7 @@ function pongo_status {
       images)
         echo Pongo cached images:
         echo ====================
-        docker images "${IMAGE_BASE_NAME}"
+        docker images --filter=reference="${IMAGE_BASE_PREFIX}*:*"
         ;;
 
       versions)
@@ -1149,7 +1167,12 @@ function main {
     compose run --rm --use-aliases \
       -e KONG_LICENSE_DATA \
       -e KONG_TEST_DONT_CLEAN \
+      -e KONG_TEST_FIPS \
       -e KONG_TEST_PLUGIN_PATH \
+      -e http_proxy \
+      -e https_proxy \
+      -e no_proxy \
+      -e ftp_proxy \
       -e PONGO_CLIENT_VERSION="$PONGO_VERSION" \
       kong \
       "$WINDOWS_SLASH/bin/bash" "-c" "apt-get install -y nettle-dev; bin/busted --helper=$WINDOWS_SLASH/pongo/busted_helper.lua ${busted_params[*]} ${busted_files[*]} ${coverage_report}"
@@ -1212,6 +1235,10 @@ function main {
     compose run --rm --use-aliases \
       -e KONG_LICENSE_DATA \
       -e PONGO_CLIENT_VERSION="$PONGO_VERSION" \
+      -e http_proxy \
+      -e https_proxy \
+      -e no_proxy \
+      -e ftp_proxy \
       -e KONG_LOG_LEVEL \
       -e KONG_ANONYMOUS_REPORTS \
       -e SUPPRESS_KONG_VERSION="$suppress_kong_version" \
@@ -1265,6 +1292,10 @@ function main {
       --workdir="$WINDOWS_SLASH/kong-plugin" \
       -e KONG_LICENSE_DATA \
       -e PONGO_CLIENT_VERSION="$PONGO_VERSION" \
+      -e http_proxy \
+      -e https_proxy \
+      -e no_proxy \
+      -e ftp_proxy \
       -e KONG_LOG_LEVEL \
       -e KONG_ANONYMOUS_REPORTS \
       -e KONG_PG_DATABASE="kong_tests" \
