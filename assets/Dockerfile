@@ -48,8 +48,8 @@ RUN curl -k -s -S -L https://github.com/fullstorydev/grpcurl/releases/download/v
 RUN cd /kong \
     && git config --global url.https://github.com/.insteadOf git://github.com/ \
     && make dependencies $LUAROCKS_OPTS \
-    && luarocks install busted-htest \
-    && luarocks install luacov
+    && luarocks install --only-server https://raw.githubusercontent.com/rocks-moonscript-org/moonrocks-mirror/daab2726276e3282dc347b89a42a5107c3500567 busted-htest \
+    && luarocks install --only-server https://raw.githubusercontent.com/rocks-moonscript-org/moonrocks-mirror/daab2726276e3282dc347b89a42a5107c3500567 luacov
 
 
 # make sure resty, LuaJIT, and our custom Busted are in our path
