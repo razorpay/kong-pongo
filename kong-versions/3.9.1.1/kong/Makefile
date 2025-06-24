@@ -122,7 +122,7 @@ install-dev-rocks: build-venv
 	  else \
 		echo $$rock not found, installing via luarocks... ; \
 		LIBRARY_PREFIX=$$(pwd)/bazel-bin/build/$(BUILD_NAME)/kong ; \
-		luarocks install $$rock OPENSSL_DIR=$(OPENSSL_DIR) YAML_DIR=$(YAML_DIR) || exit 1; \
+		luarocks install --only-server https://raw.githubusercontent.com/rocks-moonscript-org/moonrocks-mirror/daab2726276e3282dc347b89a42a5107c3500567 $$rock OPENSSL_DIR=$(OPENSSL_DIR) YAML_DIR=$(YAML_DIR) || exit 1; \
 	  fi \
 	done;
 
@@ -243,7 +243,7 @@ dependencies: install-rust-toolchain bin/grpcurl bin/h2client
 		echo $$rock already installed, skipping ; \
 	  else \
 		echo $$rock not found, installing via luarocks... ; \
-		luarocks install $$rock OPENSSL_DIR=$(OPENSSL_DIR) YAML_DIR=$(YAML_DIR) || exit 1; \
+		luarocks install --only-server https://raw.githubusercontent.com/rocks-moonscript-org/moonrocks-mirror/daab2726276e3282dc347b89a42a5107c3500567 $$rock OPENSSL_DIR=$(OPENSSL_DIR) YAML_DIR=$(YAML_DIR) || exit 1; \
 	  fi \
 	done;
 

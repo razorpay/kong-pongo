@@ -8,6 +8,9 @@ COPY $KONG_DEV_FILES /kong
 ARG PONGO_VERSION
 ENV PONGO_VERSION=$PONGO_VERSION
 
+ARG ZSCALER_CERT=false
+ENV ZSCALER_CERT=${ZSCALER_CERT}
+
 # add helper files to workaround some issues
 COPY assets/busted_helper.lua        /pongo/busted_helper.lua
 COPY assets/pongo_entrypoint.sh      /pongo/pongo_entrypoint.sh
@@ -58,13 +61,23 @@ RUN if [ -n "$PONGO_INSECURE" ] || [ "$PONGO_INSECURE" != "false" ]; then \
 
 RUN /pongo/install-python.sh
 RUN pip3 install httpie || echo -e "\n\n\nFailed installing httpie, continuing without.\n\n\n"
-RUN curl -s -S -L https://github.com/fullstorydev/grpcurl/releases/download/v1.7.0/grpcurl_1.7.0_linux_x86_64.tar.gz | tar xz -C /kong/bin
-RUN cd /kong \
-    && git config --global url.https://github.com/.insteadOf git://github.com/ \
-    && make dependencies $LUAROCKS_OPTS \
-    && luarocks install busted-htest \
-    && luarocks install luacov \
-    && luarocks install kong-plugin-dbless-reload 0.1.0
+RUN curl -s -S -L https://github.com/fullstorydev/grpcurl/releases/download/v1.7.0/grpcurl_1.7.0_linux_x86_64.tar.gz | tar xz -C /kong/bin;
+
+RUN --mount=type=secret,id=zscaler_cert \
+    if [ "$ZSCALER_CERT"=true ]; then \
+        echo "Adding Zscaler CA certificate"; \
+        cp /run/secrets/zscaler_cert /usr/local/share/ca-certificates/zscaler.crt; \
+        update-ca-certificates; \
+    else \
+        echo "Skipping Zscaler CA certificate addition"; \
+    fi
+
+RUN cd /kong && \
+    git config --global url.https://github.com/.insteadOf git://github.com/ && \
+    make dependencies $LUAROCKS_OPTS && \
+    luarocks install --only-server https://raw.githubusercontent.com/rocks-moonscript-org/moonrocks-mirror/daab2726276e3282dc347b89a42a5107c3500567 busted-htest && \
+    luarocks install --only-server https://raw.githubusercontent.com/rocks-moonscript-org/moonrocks-mirror/daab2726276e3282dc347b89a42a5107c3500567 luacov && \
+    luarocks install --only-server https://raw.githubusercontent.com/rocks-moonscript-org/moonrocks-mirror/daab2726276e3282dc347b89a42a5107c3500567 kong-plugin-dbless-reload 0.1.0
 
 # restore the insecure settings from above to secure
 RUN if [ -e ~/.bashrc ]; then rm ~/.bashrc; fi; \

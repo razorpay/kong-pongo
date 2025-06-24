@@ -110,7 +110,7 @@ end
 
 
 local DEFAULTS = {
-  timeout           = 5,
+  timeout           = 5000,
   step              = 0.05,
   message           = "UNSPECIFIED",
   max_tries         = 0,

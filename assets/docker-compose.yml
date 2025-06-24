@@ -47,10 +47,11 @@ services:
       - pongo-test-network
 
   postgres:
-    image: ${POSTGRES_IMAGE:-postgres:9.5}
+    image: ${POSTGRES_IMAGE:-postgres:14.3}
     environment:
       POSTGRES_USER: kong
       POSTGRES_DB: kong_tests
+      POSTGRES_PASSWORD: kong
       POSTGRES_HOST_AUTH_METHOD: trust
     healthcheck:
       interval: 5s
@@ -177,3 +178,4 @@ services:
           - ${SERVICE_NETWORK_NAME}-kong.${SERVICE_NETWORK_NAME}
     volumes:
       - ${PONGO_WD}:/kong-plugin
+      - /tmp/kong-plugin:/kong-plugin/servroot

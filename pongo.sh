@@ -773,10 +773,17 @@ function build_image {
     source "${LOCAL_PATH}/assets/update_versions.sh"
     update_development "$KONG_VERSION" "$VERSION"
   fi
+  export DOCKER_BUILDKIT=1
+
+  # Check if $ZSCALER_CERT_PATH is set, and if it exists, else create a /tmp/empty file
+  if [[ -z "$ZSCALER_CERT_PATH" ]]; then
+    touch /tmp/zscaler.pem
+    ZSCALER_CERT_PATH="/tmp/zscaler.pem"
+  fi
 
   msg "starting build of image '$KONG_TEST_IMAGE'"
   # shellcheck disable=SC2086 # DOCKER_BUILD_EXTRA_ARGS can contain multiple arguments so we must not quote it
-  $WINPTY_PREFIX docker build \
+  $WINPTY_PREFIX docker-buildx build \
     -f "$DOCKER_FILE" \
     --build-arg PONGO_VERSION="$PONGO_VERSION" \
     --build-arg http_proxy="$http_proxy" \
@@ -786,6 +793,8 @@ function build_image {
     --build-arg PONGO_INSECURE="$PONGO_INSECURE" \
     --build-arg KONG_BASE="$KONG_IMAGE" \
     --build-arg KONG_DEV_FILES="./kong-versions/$VERSION/kong" \
+    --build-arg ZSCALER_CERT=true \
+    --secret id=zscaler_cert,src=$ZSCALER_CERT_PATH \
     --tag "$KONG_TEST_IMAGE" \
     ${DOCKER_BUILD_EXTRA_ARGS} \
     "$LOCAL_PATH" || err "Error: failed to build test environment"
