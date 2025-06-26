@@ -1185,6 +1185,7 @@ function main {
     local busted_params=()
     local busted_files=()
     local collect_coverage_report=false
+    local collect_coverage_report=false
     index=1
     for arg in "${EXTRA_ARGS[@]}"; do
       if [[ "$index" -lt "$files_start_index" ]]; then
@@ -1210,6 +1211,11 @@ function main {
           coverage_report="; cp /kong-plugin/.luacov /kong/.luacov; luacov; mkdir -p luacov-html; cp -R luacov-html /kong-plugin/; cp luacov.report.out /kong-plugin/"
         fi
 
+    local coverage_report=""
+        if $collect_coverage_report; then
+          coverage_report="; cp /kong-plugin/.luacov /kong/.luacov; luacov; mkdir -p luacov-html; cp -R luacov-html /kong-plugin/; cp luacov.report.out /kong-plugin/"
+        fi
+
     compose run --rm --use-aliases \
       -e KONG_LICENSE_DATA \
       -e KONG_TEST_DONT_CLEAN \
@@ -1220,6 +1226,7 @@ function main {
       -e ftp_proxy \
       -e PONGO_CLIENT_VERSION="$PONGO_VERSION" \
       kong \
+      "$WINDOWS_SLASH/bin/bash" "-c" "apt-get install -y nettle-dev; bin/busted --helper=$WINDOWS_SLASH/pongo/busted_helper.lua ${busted_params[*]} ${busted_files[*]} ${coverage_report}"
       "$WINDOWS_SLASH/bin/bash" "-c" "apt-get install -y nettle-dev; bin/busted --helper=$WINDOWS_SLASH/pongo/busted_helper.lua ${busted_params[*]} ${busted_files[*]} ${coverage_report}"
     ;;
 

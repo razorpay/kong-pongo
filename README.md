@@ -516,6 +516,7 @@ To directly access Kong from the host, or the datastores, the `pongo expose`
 command can be used to expose the internal ports to the host.
 
 This allows for example to connect to the Postgres on port `5432` to validate
+This allows for example to connect to the Postgres on port `5432` to validate
 the contents of the database. Or when running `pongo shell` to manually
 start Kong, you can access all the regular Kong ports from the host, including
 the GUI's.
