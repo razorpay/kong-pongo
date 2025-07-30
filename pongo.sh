@@ -2,6 +2,8 @@
 
 # use the "--debug" flag to debug this script; setting the "set -x" option
 
+DOCKER_REPO="${DOCKER_REPO:-c.rzp.io}/razorpay-external"
+
 function globals {
   # Project related global variables
   PONGO_VERSION=2.17.0
@@ -546,7 +548,7 @@ function get_image {
     fi
   fi
 
-  KONG_IMAGE=$image
+  KONG_IMAGE=$DOCKER_REPO/$image
 }
 
 
