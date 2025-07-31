@@ -505,7 +505,7 @@ function get_image {
     # go and pull the development image here
     if [[ "$KONG_VERSION" == "$DEVELOPMENT_CE" ]]; then
       # pull the Opensource development image
-      image=$DEVELOPMENT_CE_TAG
+      image=$DOCKER_REPO/$DEVELOPMENT_CE_TAG
       docker pull "$image"
       if [[ ! $? -eq 0 ]]; then
         err "failed to pull the Kong CE development image $image"
@@ -513,7 +513,7 @@ function get_image {
 
     else
       # pull the Enterprise development image
-      image=$DEVELOPMENT_EE_TAG
+      image=$DOCKER_REPO/$DEVELOPMENT_EE_TAG
       docker pull "$image"
       if [[ ! $? -eq 0 ]]; then
         err "failed to pull: $image"
@@ -523,9 +523,9 @@ function get_image {
   else
     # regular Kong release, fetch the OSS or Enterprise version if needed
     if is_enterprise "$KONG_VERSION"; then
-      image=$KONG_EE_TAG_PREFIX$KONG_VERSION$KONG_EE_TAG_POSTFIX
+      image=$DOCKER_REPO/$KONG_EE_TAG_PREFIX$KONG_VERSION$KONG_EE_TAG_POSTFIX
     else
-      image=$KONG_OSS_TAG_PREFIX$KONG_VERSION$KONG_OSS_TAG_POSTFIX
+      image=$DOCKER_REPO/$KONG_OSS_TAG_PREFIX$KONG_VERSION$KONG_OSS_TAG_POSTFIX
     fi
 
     docker inspect --type=image "$image" &> /dev/null
@@ -538,7 +538,7 @@ function get_image {
         # repo that is immediately available for each release. This will
         # prevent any CI from failing in the mean time.
         msg "failed to pull: $image from the official repo, retrying unofficial..."
-        image=$KONG_OSS_UNOFFICIAL_TAG_PREFIX$KONG_VERSION$KONG_OSS_UNOFFICIAL_TAG_POSTFIX
+        image=$DOCKER_REPO/$KONG_OSS_UNOFFICIAL_TAG_PREFIX$KONG_VERSION$KONG_OSS_UNOFFICIAL_TAG_POSTFIX
         docker pull "$image"
         if [[ ! $? -eq 0 ]]; then
           err "failed to pull: $image"
@@ -548,7 +548,7 @@ function get_image {
     fi
   fi
 
-  KONG_IMAGE=$DOCKER_REPO/$image
+  KONG_IMAGE=$image
 }
 
 
