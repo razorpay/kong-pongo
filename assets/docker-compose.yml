@@ -1,5 +1,3 @@
-version: '3.5'
-
 networks:
   pongo-test-network:
     name: ${SERVICE_NETWORK_NAME}
@@ -7,7 +5,11 @@ networks:
 services:
   expose:
     image: pongo-expose
-    build: ./expose
+    build:
+      context: ./expose
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
     ports:
       - "8000:8000"
       - "8001:8001"
@@ -157,6 +159,19 @@ services:
       - PONGO_COMMAND=${ACTION}
       - PONGO_NETWORK=${SERVICE_NETWORK_NAME}
       - PONGO_ID=${PROJECT_ID}
+    ## Below is commented out, as the docker-compose version is older than 2.x on CI
+    # healthcheck:
+    #   interval: 5s
+    #   retries: 10
+    #   test:
+    #   - CMD
+    #   - kong
+    #   - health
+    #   - --prefix=/kong-plugin/servroot/
+    #   timeout: 10s
+    #   disable: ${SERVICE_DISABLE_HEALTHCHECK:-false}
+    extra_hosts:
+    - "host.docker.internal:host-gateway"
     networks:
       pongo-test-network:
         aliases:
