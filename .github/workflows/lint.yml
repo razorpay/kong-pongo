@@ -20,5 +20,16 @@ jobs:
     - name: Checkout source code
       uses: actions/checkout@v3
 
+    - name: Start PMG (package manager guard)
+      uses: safedep/pmg@v1
+      with:
+        server-mode: true
+        api-key: ${{ secrets.SAFEDEP_API_KEY }}
+        tenant-id: ${{ secrets.SAFEDEP_TENANT_ID }}
+
     - name: Lint
       run: make lint
+
+    - name: Enforce PMG policy
+      if: always()
+      run: pmg proxy stop --fail-on-violation
